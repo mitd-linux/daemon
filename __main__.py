@@ -62,7 +62,7 @@ def packet_handler_factory(indev: Optional[str], cache_size: int) -> callable:
         vec[1] = iphdr[6] / 0xFF
         vec[2] = iphdr[8] / 0xFFFFFF
         vec[3] = iphdr[8] & 0xFFFFFF00
-        vec[4] = packet.get_payload_len()
+        vec[4] = packet.get_payload_len() / 65535
         vec[5] = iphdr[7] / 0xFFFF
         vec /= np.linalg.norm(vec)
 
