@@ -1,4 +1,5 @@
 """Mitfw userland daemon."""
+from socket import IPPROTO_TCP
 import struct
 from typing import Optional
 
@@ -48,7 +49,9 @@ def packet_handler_factory(indev: Optional[str], cache_size: int) -> callable:
             packet.accept()
 
         # Read ip header
-        iphdr: tuple = struct.unpack("BBHHHBBII", packet.get_payload()[:20])
+        iphdr: tuple = struct.unpack("BBHHHBBHII", packet.get_payload()[:20])
+        ver_ihl, dscp_ecn, total_len, ident, flags_fragoff, ttl, protocol, \
+            checksum, src_ip, dest_ip = iphdr
 
         if (iphdr[8] in blocked):
             # ip is blocked
@@ -56,14 +59,37 @@ def packet_handler_factory(indev: Optional[str], cache_size: int) -> callable:
             return
 
         # Vectorize
-        vec: np.ndarray = np.zeros(6)
+        vec: np.ndarray = np.zeros(21)
         vec[0] = int.from_bytes(packet.get_hw(), byteorder='big') / 0xFFFFFFFF \
             if packet.get_hw() else 0
-        vec[1] = iphdr[6] / 0xFF
-        vec[2] = iphdr[8] / 0xFFFFFF
-        vec[3] = iphdr[8] & 0xFFFFFF00
-        vec[4] = packet.get_payload_len() / 65535
-        vec[5] = iphdr[7] / 0xFFFF
+        vec[1] = protocol / 0xFF
+        vec[2] = src_ip / 0xFFFFFF
+        vec[3] = (src_ip & 0xFFFFFF00) / 0xFFFF00
+        vec[4] = total_len / 0xFFFF
+        vec[5] = checksum / 0xFFFF
+        vec[6] = ttl / 0xFF
+        vec[7] = flags_fragoff / 0xFFFF
+        vec[8] = ident / 0xFFFF
+        vec[9] = ver_ihl / 0xFF
+        vec[10] = dscp_ecn / 0xFF
+        vec[11] = dest_ip / 0xFFFF
+
+        if (protocol == IPPROTO_TCP):
+            # This is tcp
+            tcphdr: tuple = struct.unpack("HHIIBBHHH",
+                                          packet.get_payload()[(ver_ihl & 0x0F):20])
+            src_port, dest_port, seq, ack, data_off, \
+                flags, win_size, tcp_checksum, urg = tcphdr
+            vec[12] = src_port / 0xFFFF
+            vec[13] = dest_port / 0xFFFF
+            vec[14] = seq / 0xFFFFFFFF
+            vec[15] = ack / 0xFFFFFFFF
+            vec[16] = data_off / 0xFF
+            vec[17] = flags / 0xFF
+            vec[18] = win_size / 0xFFFF
+            vec[19] = tcp_checksum / 0xFFFF
+            vec[20] = urg / 0xFFFF
+
         vec /= np.linalg.norm(vec)
 
         # Find similar
