@@ -48,6 +48,11 @@ def packet_handler_factory(indev: Optional[str], cache_size: int) -> callable:
         # Input device is not what we want
         if indev and packet.indev != indev:
             packet.accept()
+            return
+
+        if packet.get_payload_len() < 20:
+            packet.accept()
+            return
 
         # Read ip header
         iphdr: tuple = struct.unpack("BBHHHBBHII", packet.get_payload()[:20])
